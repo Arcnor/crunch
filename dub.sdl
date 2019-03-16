@@ -1,0 +1,7 @@
+name "crunch"
+description "Fast reader for crunch texture packer"
+license "public domain"
+authors "webfreak"
+
+sourcePaths "reader/d"
+importPaths "reader/d"

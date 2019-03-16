@@ -37,3 +37,7 @@ build/*
 *.opendb
 *.db
 *.suo
+
+# D
+*-test-*
+dub.selections.json
