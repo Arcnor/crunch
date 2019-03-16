@@ -452,7 +452,17 @@ int main(int argc, const char* argv[])
             cout << "writing xml: " << outputDir << name << ".xml" << endl;
         
         ofstream xml(outputDir + name + ".xml");
-        xml << "<atlas>" << endl;
+        xml << "<?xml version=\"1.0\"?>" << endl;
+        xml << "<atlas version=\"1\" size=\"" << optSize << "\" padding=\"" << optPadding << "\"";
+        if (optPremultiply)
+            xml << " premultiplied=\"premultiplied\"";
+        if (optTrim)
+            xml << " trim=\"trim\"";
+        if (optRotate)
+            xml << " rotate=\"rotate\"";
+        if (optUnique)
+            xml << " unique=\"unique\"";
+        xml << ">" << endl;
         for (size_t i = 0; i < packers.size(); ++i)
             packers[i]->SaveXml(name + to_string(i), xml, optTrim, optRotate);
         xml << "</atlas>";
@@ -466,6 +476,13 @@ int main(int argc, const char* argv[])
         
         ofstream json(outputDir + name + ".json");
         json << '{' << endl;
+        json << "\t\"version\": 1," << endl;
+        json << "\t\"size\": " << optSize << "," << endl;
+        json << "\t\"padding\": " << optPadding << "," << endl;
+        json << "\t\"premultiplied\": " << (optPremultiply ? "true" : "false") << "," << endl;
+        json << "\t\"trim\": " << (optTrim ? "true" : "false") << "," << endl;
+        json << "\t\"rotate\": " << (optRotate ? "true" : "false") << "," << endl;
+        json << "\t\"unique\": " << (optUnique ? "true" : "false") << "," << endl;
         json << "\t\"textures\":[" << endl;
         for (size_t i = 0; i < packers.size(); ++i)
         {
