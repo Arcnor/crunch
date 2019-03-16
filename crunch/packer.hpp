@@ -29,6 +29,7 @@
 
 #include <vector>
 #include <fstream>
+#include <numeric>
 #include <unordered_map>
 #include "bitmap.hpp"
 
@@ -56,8 +57,20 @@ struct Packer
     void Pack(vector<Bitmap*>& bitmaps, bool verbose, bool unique, bool rotate);
     void SavePng(const string& file);
     void SaveXml(const string& name, ofstream& xml, bool trim, bool rotate);
-    void SaveBin(const string& name, ofstream& bin, bool trim, bool rotate);
+    void SaveBin(const string& name, ofstream& bin, bool trim, bool rotate, int version, int alignment);
     void SaveJson(const string& name, ofstream& json, bool trim, bool rotate);
 };
+
+void alignStream(ofstream& bin, int alignment);
+
+template <typename T, typename Compare>
+std::vector<std::size_t> sort_permutation(
+    const std::vector<T>& vec,
+    Compare compare);
+
+template <typename T>
+void apply_permutation_in_place(
+    std::vector<T>& vec,
+    const std::vector<std::size_t>& p);
 
 #endif

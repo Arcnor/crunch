@@ -35,6 +35,7 @@
     -d  --default           use default settings (-x -p -t -u)
     -x  --xml               saves the atlas data as a .xml file
     -b  --binary            saves the atlas data as a .bin file
+    -c  --compact           saves the atlas data as a .bin file
     -j  --json              saves the atlas data as a .json file
     -p  --premultiply       premultiplies the pixels of the bitmaps by their alpha channel
     -t  --trim              trims excess transparency off the bitmaps
@@ -44,12 +45,31 @@
     -r  --rotate            enabled rotating bitmaps 90 degrees clockwise when packing
     -s# --size#             max atlas size (# can be 4096, 2048, 1024, 512, 256, 128, or 64)
     -p# --pad#              padding between images (# can be from 0 to 16)
- 
+
+ compact format additions:
+ preamble:
+    63 72 6E C7 49 31 5B  magic number ("crn\xC7I1[")
+    00                    format version number. Unsupported versions must be considered unknown.
+                          Only a format change should change this version number.
+
+    [int16] atlas_size
+    [byte] padding
+    [byte] crunch_flags
+
+    crunch_flags:
+    - 0x01 premultiplied
+    - 0x02 trim enabled
+    - 0x04 rotation enabled
+    - 0x08 unique
+
+ Additionally `--compact` sorts images by img_name.
+
  binary format:
     [int16] num_textures (below block is repeated this many times)
-        [string] name
+        [string] name (sorted)
         [int16] num_images (below block is repeated this many times)
-            [string] img_name
+        // with --compact this is padded to the next 512 bytes (if not on one already)
+            [string] img_name (not in --compact)
             [int16] img_x
             [int16] img_y
             [int16] img_width
@@ -59,6 +79,8 @@
             [int16] img_frame_width     (if --trim enabled)
             [int16] img_frame_height    (if --trim enabled)
             [byte] img_rotated          (if --rotate enabled)
+            [string] img_name (only in --compact, moved to end)
+            // with --compact each image is padded to 512 bytes (and must not exceed that in size)
  */
 
 #include <iostream>
@@ -79,8 +101,9 @@ using namespace std;
 
 static int optSize;
 static int optPadding;
+static int optBinAlign;
 static bool optXml;
-static bool optBinary;
+static bool optBinary, optBinary2;
 static bool optJson;
 static bool optPremultiply;
 static bool optTrim;
@@ -228,8 +251,10 @@ int main(int argc, const char* argv[])
     //Get the options
     optSize = 4096;
     optPadding = 1;
+    optBinAlign = 128;
     optXml = false;
     optBinary = false;
+    optBinary2 = false;
     optJson = false;
     optPremultiply = false;
     optTrim = false;
@@ -245,6 +270,8 @@ int main(int argc, const char* argv[])
             optXml = true;
         else if (arg == "-b" || arg == "--binary")
             optBinary = true;
+        else if (arg == "-c" || arg == "--compact")
+            optBinary2 = true;
         else if (arg == "-j" || arg == "--json")
             optJson = true;
         else if (arg == "-p" || arg == "--premultiply")
@@ -263,6 +290,10 @@ int main(int argc, const char* argv[])
             optSize = GetPackSize(arg.substr(6));
         else if (arg.find("-s") == 0)
             optSize = GetPackSize(arg.substr(2));
+        else if (arg.find("--balign") == 0)
+            optBinAlign = GetPackSize(arg.substr(8));
+        else if (arg.find("-ba") == 0)
+            optBinAlign = GetPackSize(arg.substr(3));
         else if (arg.find("--pad") == 0)
             optPadding = GetPadding(arg.substr(5));
         else if (arg.find("-p") == 0)
@@ -300,6 +331,7 @@ int main(int argc, const char* argv[])
     /*-d  --default           use default settings (-x -p -t -u)
     -x  --xml               saves the atlas data as a .xml file
     -b  --binary            saves the atlas data as a .bin file
+    -c  --compact           saves the atlas data as a .bin file
     -j  --json              saves the atlas data as a .json file
     -p  --premultiply       premultiplies the pixels of the bitmaps by their alpha channel
     -t  --trim              trims excess transparency off the bitmaps
@@ -315,6 +347,7 @@ int main(int argc, const char* argv[])
         cout << "options..." << endl;
         cout << "\t--xml: " << (optXml ? "true" : "false") << endl;
         cout << "\t--binary: " << (optBinary ? "true" : "false") << endl;
+        cout << "\t--compact: " << (optBinary2 ? "true" : "false") << endl;
         cout << "\t--json: " << (optJson ? "true" : "false") << endl;
         cout << "\t--premultiply: " << (optPremultiply ? "true" : "false") << endl;
         cout << "\t--trim: " << (optTrim ? "true" : "false") << endl;
@@ -377,15 +410,38 @@ int main(int argc, const char* argv[])
     }
     
     //Save the atlas binary
-    if (optBinary)
+    if (optBinary || optBinary2)
     {
         if (optVerbose)
             cout << "writing bin: " << outputDir << name << ".bin" << endl;
         
         ofstream bin(outputDir + name + ".bin", ios::binary);
+
+        static string magicNumber = "crn\xC7I1[";
+
+        if (optBinary2)
+        {
+            bin.write(magicNumber.data(), magicNumber.length());
+            WriteByte(bin, static_cast<char>(0)); // version
+            WriteShort(bin, static_cast<int16_t>(optBinAlign));
+            WriteShort(bin, static_cast<int16_t>(optSize));
+            WriteByte(bin, static_cast<char>(optPadding));
+
+            char flags = 0;
+            if (optPremultiply)
+                flags |= 0x01;
+            if (optTrim)
+                flags |= 0x02;
+            if (optRotate)
+                flags |= 0x04;
+            if (optUnique)
+                flags |= 0x08;
+            WriteByte(bin, flags);
+        }
+
         WriteShort(bin, (int16_t)packers.size());
         for (size_t i = 0; i < packers.size(); ++i)
-            packers[i]->SaveBin(name + to_string(i), bin, optTrim, optRotate);
+            packers[i]->SaveBin(name + to_string(i), bin, optTrim, optRotate, optBinary2 ? 0 : -1, optBinAlign);
         bin.close();
     }
     

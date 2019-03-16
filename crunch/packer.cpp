@@ -140,26 +140,53 @@ void Packer::SaveXml(const string& name, ofstream& xml, bool trim, bool rotate)
     xml << "\t</tex>" << endl;
 }
 
-void Packer::SaveBin(const string& name, ofstream& bin, bool trim, bool rotate)
+void Packer::SaveBin(const string& name, ofstream& bin, bool trim, bool rotate, int version, int alignment)
 {
-    WriteString(bin, name);
-    WriteShort(bin, (int16_t)bitmaps.size());
+    auto p = sort_permutation(bitmaps, [](const Bitmap* a, const Bitmap* b) -> bool
+    {
+        return a->name.compare(b->name) < 0;
+    });
+    apply_permutation_in_place(bitmaps, p);
+    apply_permutation_in_place(points, p);
+
+    WriteStringVersion(bin, name, version);
+    WriteShort(bin, static_cast<int16_t>(bitmaps.size()));
+
+    if (version >= 0)
+        alignStream(bin, alignment);
+
     for (size_t i = 0, j = bitmaps.size(); i < j; ++i)
     {
-        WriteString(bin, bitmaps[i]->name);
-        WriteShort(bin, (int16_t)points[i].x);
-        WriteShort(bin, (int16_t)points[i].y);
-        WriteShort(bin, (int16_t)bitmaps[i]->width);
-        WriteShort(bin, (int16_t)bitmaps[i]->height);
+        // short name length + name + 4x short, + trim ? 4x short + rotate ? 1
+        if (version >= 0 && 2 + bitmaps[i]->name.length() + 8 + (trim ? 8 : 0) + (rotate ? 1 : 0) > alignment)
+        {
+            cerr << "Skipping file in binary output (name too long, try specifying bigger --balign): " << bitmaps[i]->name << endl;
+            continue; // skip too big
+        }
+
+        if (version == -1)
+            WriteString(bin, bitmaps[i]->name);
+
+        WriteShort(bin, static_cast<int16_t>(points[i].x));
+        WriteShort(bin, static_cast<int16_t>(points[i].y));
+        WriteShort(bin, static_cast<int16_t>(bitmaps[i]->width));
+        WriteShort(bin, static_cast<int16_t>(bitmaps[i]->height));
         if (trim)
         {
-            WriteShort(bin, (int16_t)bitmaps[i]->frameX);
-            WriteShort(bin, (int16_t)bitmaps[i]->frameY);
-            WriteShort(bin, (int16_t)bitmaps[i]->frameW);
-            WriteShort(bin, (int16_t)bitmaps[i]->frameH);
+            WriteShort(bin, static_cast<int16_t>(bitmaps[i]->frameX));
+            WriteShort(bin, static_cast<int16_t>(bitmaps[i]->frameY));
+            WriteShort(bin, static_cast<int16_t>(bitmaps[i]->frameW));
+            WriteShort(bin, static_cast<int16_t>(bitmaps[i]->frameH));
         }
         if (rotate)
             WriteByte(bin, points[i].rot ? 1 : 0);
+
+        if (version >= 0)
+        {
+            WriteLengthPrefixedString(bin, bitmaps[i]->name);
+
+            alignStream(bin, alignment);
+        }
     }
 }
 
@@ -190,4 +217,56 @@ void Packer::SaveJson(const string& name, ofstream& json, bool trim, bool rotate
         json << endl;
     }
     json << "\t\t\t]" << endl;
+}
+
+void alignStream(ofstream& bin, int alignment)
+{
+    static const char zeros[4096] = "";
+
+    assert(alignment <= 4096);
+
+    streampos position = bin.tellp();
+    streampos remaining = alignment - (position % alignment);
+    if (position >= 0 && remaining > 0)
+    {
+        bin.write(&zeros[0], remaining);
+    }
+}
+
+// https://stackoverflow.com/questions/17074324/how-can-i-sort-two-vectors-in-the-same-way-with-criteria-that-uses-only-one-of
+template <typename T, typename Compare>
+std::vector<std::size_t> sort_permutation(
+    const std::vector<T>& vec,
+    Compare compare)
+{
+    std::vector<std::size_t> p(vec.size());
+    std::iota(p.begin(), p.end(), 0);
+    std::sort(p.begin(), p.end(),
+        [vec, compare](std::size_t i, std::size_t j){ return compare(vec[i], vec[j]); });
+    return p;
+}
+
+template <typename T>
+void apply_permutation_in_place(
+    std::vector<T>& vec,
+    const std::vector<std::size_t>& p)
+{
+    std::vector<bool> done(vec.size());
+    for (std::size_t i = 0; i < vec.size(); ++i)
+    {
+        if (done[i])
+        {
+            continue;
+        }
+        done[i] = true;
+        std::size_t prev_j = i;
+        std::size_t j = p[i];
+        while (i != j)
+        {
+            std::swap(vec[prev_j], vec[j]);
+            done[j] = true;
+            prev_j = j;
+            j = p[j];
+        }
+    }
 }

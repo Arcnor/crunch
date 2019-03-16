@@ -27,9 +27,23 @@
 #include "binary.hpp"
 #include <iostream>
 
+void WriteStringVersion(ofstream& bin, const string& value, int version)
+{
+    if (version == -1)
+        WriteString(bin, value);
+    else
+        WriteLengthPrefixedString(bin, value);
+}
+
 void WriteString(ofstream& bin, const string& value)
 {
     bin.write(value.data(), value.length() + 1);
+}
+
+void WriteLengthPrefixedString(ofstream& bin, const string& value)
+{
+    WriteShort(bin, static_cast<int16_t>(value.length()));
+    bin.write(value.data(), value.length());
 }
 
 void WriteShort(ofstream& bin, int16_t value)
@@ -43,6 +57,14 @@ void WriteByte(ofstream& bin, char value)
     bin.write(&value, 1);
 }
 
+string ReadStringVersion(ifstream& bin, int version)
+{
+    if (version == -1)
+        return ReadString(bin);
+    else
+        return ReadLengthPrefixedString(bin);
+}
+
 string ReadString(ifstream& bin)
 {
     char data[256];
@@ -51,6 +73,14 @@ string ReadString(ifstream& bin)
     while (*chr != '\0')
         bin.read(++chr, 1);
     return data;
+}
+
+string ReadLengthPrefixedString(ifstream& bin)
+{
+    int16_t length = ReadShort(bin);
+    std::string result(length, '\0');
+    bin.read(&result[0], length);
+    return result;
 }
 
 int16_t ReadShort(ifstream& bin)

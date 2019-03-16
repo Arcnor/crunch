@@ -32,10 +32,14 @@
 
 using namespace std;
 
+void WriteStringVersion(ofstream& bin, const string& value, int version);
 void WriteString(ofstream& bin, const string& value);
+void WriteLengthPrefixedString(ofstream& bin, const string& value);
 void WriteShort(ofstream& bin, int16_t value);
 void WriteByte(ofstream& bin, char value);
+string ReadStringVersion(ifstream& bin, int version);
 string ReadString(ifstream& bin);
+string ReadLengthPrefixedString(ifstream& bin);
 int16_t ReadShort(ifstream& bin);
 
 #endif
